@@ -265,6 +265,23 @@ class Rangefinder(object):
         return "Rangefinder: distance={}, voltage={}".format(self.distance, self.voltage)
 
 
+class DistanceSensor(object):
+    """
+    Rangefinder readings.
+
+    An object of this type is returned by :py:attr:`Vehicle.rangefinder`.
+
+    :param distance: Distance (metres). ``None`` if the vehicle doesn't have a rangefinder.
+    :param voltage: Voltage (volts). ``None`` if the vehicle doesn't have a rangefinder.
+    """
+
+    def __init__(self, distance):
+        self.distance = distance
+
+    def __str__(self):
+        return "DistanceSensor: distance={}".format(self.distance)
+
+
 class Version(object):
     """
     Autopilot version and type.
@@ -1113,6 +1130,17 @@ class Vehicle(HasObservers):
         self._mount_yaw = None
         self._mount_roll = None
 
+        self._current_distance = None
+
+        @self.on_message('DISTANCE_SENSOR')
+        def listener(self, name, m):
+            self._current_distance = m.current_distance
+            self.notify_attribute_listeners('distance_sensor', self.distance_sensor)
+
+        self._mount_pitch = None
+        self._mount_yaw = None
+        self._mount_roll = None
+
         @self.on_message('MOUNT_STATUS')
         def listener(self, name, m):
             self._mount_pitch = m.pointing_a / 100.0
@@ -1142,17 +1170,21 @@ class Vehicle(HasObservers):
         # All keys are strings.
         self._channels = Channels(self, 8)
 
-        @self.on_message(['RC_CHANNELS_RAW', 'RC_CHANNELS'])
+        @self.on_message('RC_CHANNELS_RAW')
         def listener(self, name, m):
             def set_rc(chnum, v):
                 '''Private utility for handling rc channel messages'''
                 # use port to allow ch nums greater than 8
-                port = 0 if name == "RC_CHANNELS" else m.port
-                self._channels._update_channel(str(port * 8 + chnum), v)
+                self._channels._update_channel(str(m.port * 8 + chnum), v)
 
-            for i in range(1, (18 if name == "RC_CHANNELS" else 8)+1):
-                set_rc(i, getattr(m, "chan{}_raw".format(i)))
-
+            set_rc(1, m.chan1_raw)
+            set_rc(2, m.chan2_raw)
+            set_rc(3, m.chan3_raw)
+            set_rc(4, m.chan4_raw)
+            set_rc(5, m.chan5_raw)
+            set_rc(6, m.chan6_raw)
+            set_rc(7, m.chan7_raw)
+            set_rc(8, m.chan8_raw)
             self.notify_attribute_listeners('channels', self.channels)
 
         self._voltage = None
@@ -1693,6 +1725,13 @@ class Vehicle(HasObservers):
         Rangefinder distance and voltage values (:py:class:`Rangefinder`).
         """
         return Rangefinder(self._rngfnd_distance, self._rngfnd_voltage)
+
+    @property
+    def distance_sensor(self):
+        """
+        DistanceSensor distance and voltage values (:py:class:`DistanceSensor`).
+        """
+        return DistanceSensor(self._current_distance)
 
     @property
     def velocity(self):
@@ -2540,7 +2579,7 @@ class Gimbal(object):
 
         @vehicle.on_message('MOUNT_ORIENTATION')
         def listener(vehicle, name, m):
-            self._pitch = m.pitch
+            self._pitch = m.pitch 
             self._roll = m.roll
             self._yaw = m.yaw
             vehicle.notify_attribute_listeners('gimbal', vehicle.gimbal)
